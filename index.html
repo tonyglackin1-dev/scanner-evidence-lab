@@ -50,10 +50,10 @@
         <div class="grid controls-grid">
           <label class="control-card">
             <span>Timeframe</span>
-            <select id="timeframe" title="Daily is live. Weekly and Monthly will be enabled when their own datasets are built.">
-              <option>Daily</option>
-              <option disabled>Weekly — coming next</option>
-              <option disabled>Monthly — coming next</option>
+            <select id="timeframe" title="Weekly and Monthly enable automatically when their first datasets finish building.">
+              <option value="Daily">Daily</option>
+              <option value="Weekly" disabled>Weekly — building</option>
+              <option value="Monthly" disabled>Monthly — building</option>
             </select>
           </label>
 
@@ -143,6 +143,7 @@
   </div>
   <script src="app.js"></script>
   <script src="easy-mode-v2.js"></script>
+  <script src="timeframe-v1.js"></script>
   <script src="product-v1.js"></script>
 </body>
 </html>
