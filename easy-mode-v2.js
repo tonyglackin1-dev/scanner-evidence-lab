@@ -129,3 +129,158 @@
     });
   };
 })();
+
+/* Exact all-match evidence layer.
+   Headline evidence now covers every currently matched ticker. To stay scalable,
+   +5D is the exact median of each ticker's own historical median (equal ticker
+   weighting), while +10D win rate and sample size use every qualifying event. */
+(function () {
+  if (typeof runEasyMode !== 'function' || typeof loadShard !== 'function') return;
+
+  function setMetricLabels() {
+    const m5 = document.querySelector('#median5Metric')?.closest('.metric-card');
+    if (m5) {
+      const label = m5.querySelector('span');
+      const note = m5.querySelector('small');
+      if (label) label.textContent = 'Median ticker +5D';
+      if (note) note.textContent = 'Equal-weighted across all matches';
+    }
+    const win = document.querySelector('#winMetric')?.closest('.metric-card');
+    if (win) {
+      const note = win.querySelector('small');
+      if (note) note.textContent = 'All qualifying historical events';
+    }
+    const sample = document.querySelector('#sampleMetric')?.closest('.metric-card');
+    if (sample) {
+      const note = sample.querySelector('small');
+      if (note) note.textContent = 'Exact +5D historical events';
+    }
+  }
+
+  function tickerStats(events) {
+    return statsFromEvents(events);
+  }
+
+  async function exactAllMatchEvidence(displayRows, matchedRows, rules, token) {
+    if (token !== scanToken) return;
+    const displayByTicker = new Map(displayRows.map(r => [r.ticker, r]));
+    const tickerMedians5 = [];
+    let positive10 = 0;
+    let sample10 = 0;
+    let sample5 = 0;
+    let tickersWithEvidence = 0;
+
+    const groups = new Map();
+    for (const row of matchedRows) {
+      const id = legacyMode ? -1 : shardFor(row.ticker);
+      if (!groups.has(id)) groups.set(id, []);
+      groups.get(id).push(row.ticker);
+    }
+    const jobs = [...groups.entries()];
+    let next = 0;
+    let completed = 0;
+
+    const status = document.querySelector('#resultTimestamp');
+    const sampleMetric = document.querySelector('#sampleMetric');
+
+    async function processTicker(ticker, hist) {
+      if (token !== scanToken) return;
+      const events = (hist || []).filter(r => passesHistory(r, rules));
+      if (!events.length) return;
+      const stats = tickerStats(events);
+      tickersWithEvidence++;
+      if (stats[1].median !== null) tickerMedians5.push(stats[1].median);
+      sample5 += stats[1].sample;
+      sample10 += stats[2].sample;
+      positive10 += (stats[2].values || []).reduce((n, v) => n + (v > 0 ? 1 : 0), 0);
+
+      const displayRow = displayByTicker.get(ticker);
+      if (displayRow) {
+        displayRow.evidence_detail = stats;
+        displayRow.evidence = stats.map(s => s.median);
+        displayRow.d5 = fmtEvidence(stats[1].median);
+      }
+    }
+
+    async function worker() {
+      while (true) {
+        const jobIndex = next++;
+        if (jobIndex >= jobs.length || token !== scanToken) return;
+        const [shardId, tickers] = jobs[jobIndex];
+        if (legacyMode) {
+          for (const ticker of tickers) {
+            await processTicker(ticker, scannerData.history?.[ticker] || []);
+          }
+        } else {
+          const map = await loadShard(shardId);
+          if (token !== scanToken) return;
+          for (const ticker of tickers) await processTicker(ticker, map.get(ticker) || []);
+        }
+        completed++;
+        if (token === scanToken) {
+          if (sampleMetric) sampleMetric.textContent = `${completed}/${jobs.length}`;
+          if (status) status.dataset.evidenceProgress = `Exact evidence ${completed}/${jobs.length} shards`;
+        }
+      }
+    }
+
+    const concurrency = Math.min(6, Math.max(1, jobs.length));
+    await Promise.all(Array.from({length: concurrency}, () => worker()));
+    if (token !== scanToken) return;
+
+    renderRows(displayRows);
+    document.querySelector('#median5Metric').textContent = fmtEvidence(median(tickerMedians5));
+    document.querySelector('#winMetric').textContent = sample10 ? `${(positive10 / sample10 * 100).toFixed(1)}%` : 'n/a';
+    document.querySelector('#sampleMetric').textContent = sample5.toLocaleString();
+
+    const coverage = `${tickersWithEvidence.toLocaleString()}/${matchedRows.length.toLocaleString()} matched tickers with history`;
+    if (status) status.textContent += ` • exact evidence: ${coverage}`;
+    if (displayRows.length) showEvidence(displayRows[0], rules);
+  }
+
+  runEasyMode = function () {
+    if (!scannerData?.latest) return;
+    setMetricLabels();
+    const token = ++scanToken;
+    const timeframe = document.querySelector('#timeframe')?.value || 'Daily';
+    const query = document.querySelector('#scanQuery').value;
+    const rules = parseRules(query);
+    activeRules = rules;
+    renderRuleChips(rules);
+
+    if (!rules.length) {
+      body.innerHTML = '<tr><td colspan="7" class="negative">I could not interpret a supported condition. Try RSI, MACD, 20/50/200 DMA, relative volume, price moves, or 52-week high/low.</td></tr>';
+      ['matchesMetric','median5Metric','winMetric','sampleMetric'].forEach(id => document.querySelector(`#${id}`).textContent = '—');
+      return;
+    }
+
+    const matched = scannerData.latest.filter(row => universeFilter(row) && passesLatest(row, rules));
+    matched.sort((a,b) => (Number(b.avg_dollar_vol20)||0) - (Number(a.avg_dollar_vol20)||0));
+    const display = matched.slice(0, 200).map(row => buildDisplayRow(row, rules));
+    renderRows(display);
+
+    document.querySelector('#matchesMetric').textContent = matched.length.toLocaleString();
+    document.querySelector('#median5Metric').textContent = '…';
+    document.querySelector('#winMetric').textContent = '…';
+    document.querySelector('#sampleMetric').textContent = '…';
+
+    const when = scannerData.generated_at ? new Date(scannerData.generated_at) : null;
+    const whenText = when && !Number.isNaN(when.getTime()) ? when.toLocaleString() : 'unknown time';
+    const scope = legacyMode ? `${scannerData.processed_symbols || scannerData.latest.length} symbol prototype` : `${(scannerData.processed_symbols || scannerData.latest.length).toLocaleString()} full-market symbols`;
+    const shown = matched.length > display.length ? ` • showing top ${display.length} by liquidity` : '';
+    const tf = timeframe === 'Daily' ? '' : ` • ${timeframe} unavailable: Daily EOD only`;
+    document.querySelector('#resultTimestamp').textContent = `Yahoo EOD • ${scope} • ${matched.length.toLocaleString()} matches${shown}${tf} • refreshed ${whenText}`;
+
+    if (matched.length) {
+      exactAllMatchEvidence(display, matched, rules, token).catch(err => {
+        if (token === scanToken) document.querySelector('#resultTimestamp').textContent += ` • exact evidence error: ${err.message}`;
+      });
+    } else {
+      document.querySelector('#median5Metric').textContent = 'n/a';
+      document.querySelector('#winMetric').textContent = 'n/a';
+      document.querySelector('#sampleMetric').textContent = '0';
+    }
+  };
+
+  setMetricLabels();
+})();
