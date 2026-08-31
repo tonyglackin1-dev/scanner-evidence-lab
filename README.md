@@ -6,23 +6,23 @@ Scanner Evidence Lab is a market-scanning dashboard for end-of-day technical sca
 
 ## Current MVP
 
-- Market universe: US Stocks + ETFs
-- Timeframes: Daily / Weekly / Monthly
-- Benchmark: SPY by default
+- Full US stocks + ETFs market universe
+- Yahoo Finance EOD data pipeline
 - Easy Mode natural-language scan builder
-- Results table with technical evidence
-- Historical aftermath evidence panel
-- Saved scans, watchlists and account navigation placeholders
+- RSI, MACD, moving averages, relative volume, price-move and 52-week rules
+- Historical +1D / +5D / +10D / +20D aftermath evidence
+- Full-market snapshot with on-demand historical evidence shards
+- Automated weekday market refreshes and scheduled deeper history rebuilds
 - Responsive dark dashboard UI
 
 ## Deployment
 
-This repository is configured to deploy the static MVP to GitHub Pages using GitHub Actions.
+This repository is configured to deploy to GitHub Pages using GitHub Actions. The full-market dataset is generated automatically and served with the static application.
 
 ## Next build stages
 
-1. Connect the scanner to live market data.
-2. Convert Easy Mode rules into structured scanner conditions.
-3. Add historical event-study calculations after each matched setup.
-4. Add saved scans and watchlists persistence.
-5. Add authentication and plan controls.
+1. Verify full-market deployment end-to-end.
+2. Add stronger scan ranking and liquidity controls.
+3. Add saved scans and watchlists persistence.
+4. Add authentication and plan controls.
+5. Continue expanding the Easy Mode rule vocabulary and evidence analysis.
