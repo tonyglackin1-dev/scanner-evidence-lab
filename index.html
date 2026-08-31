@@ -50,10 +50,10 @@
         <div class="grid controls-grid">
           <label class="control-card">
             <span>Timeframe</span>
-            <select id="timeframe">
+            <select id="timeframe" title="Daily is live. Weekly and Monthly will be enabled when their own datasets are built.">
               <option>Daily</option>
-              <option>Weekly</option>
-              <option>Monthly</option>
+              <option disabled>Weekly — coming next</option>
+              <option disabled>Monthly — coming next</option>
             </select>
           </label>
 
@@ -105,7 +105,7 @@
               <span class="eyebrow">Current Matches</span>
               <h3>Scanner results</h3>
             </div>
-            <span id="resultTimestamp" class="muted">Demo evidence set</span>
+            <span id="resultTimestamp" class="muted">Loading Yahoo EOD data…</span>
           </div>
           <div class="table-wrap">
             <table>
@@ -119,12 +119,12 @@
 
         <section class="evidence-grid">
           <div class="panel evidence-panel">
-            <div class="panel-head"><div><span class="eyebrow">Historical Aftermath</span><h3 id="evidenceTitle">Evidence for NVDA</h3></div></div>
+            <div class="panel-head"><div><span class="eyebrow">Historical Aftermath</span><h3 id="evidenceTitle">Historical evidence</h3></div></div>
             <div class="after-grid">
-              <div><span>+1 Day</span><strong id="ev1">+0.9%</strong></div>
-              <div><span>+5 Days</span><strong id="ev5">+3.4%</strong></div>
-              <div><span>+10 Days</span><strong id="ev10">+5.8%</strong></div>
-              <div><span>+20 Days</span><strong id="ev20">+8.1%</strong></div>
+              <div><span>+1 Day</span><strong id="ev1">—</strong></div>
+              <div><span>+5 Days</span><strong id="ev5">—</strong></div>
+              <div><span>+10 Days</span><strong id="ev10">—</strong></div>
+              <div><span>+20 Days</span><strong id="ev20">—</strong></div>
             </div>
             <div class="distribution" id="distribution"></div>
           </div>
@@ -142,5 +142,6 @@
     </main>
   </div>
   <script src="app.js"></script>
+  <script src="easy-mode-v2.js"></script>
 </body>
 </html>
