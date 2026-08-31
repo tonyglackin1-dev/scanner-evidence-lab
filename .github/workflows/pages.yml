@@ -8,6 +8,7 @@ on:
     workflows:
       - "Refresh Scanner Data"
       - "Refresh Weekly Monthly Data"
+      - "Refresh EMA Evidence Data"
     types: [completed]
 
 permissions:
