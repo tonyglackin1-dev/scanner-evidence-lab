@@ -5,6 +5,7 @@
   if (typeof parseRules !== 'function') return;
 
   const coreParseRules = parseRules;
+  const INCLUSIVE_EPS = 1e-9;
 
   function addIfMissing(rules, field, op, value, label) {
     const same = rules.some(r => r.field === field && r.op === op);
@@ -22,7 +23,6 @@
 
     let m;
 
-    // RSI conversational phrasing and inclusive thresholds.
     if (/rsi(?:\s*\(14\))?\s*(?:is\s*)?oversold/.test(q)) {
       addIfMissing(rules, 'rsi', '<', 30, 'RSI < 30 (oversold)');
     }
@@ -31,14 +31,13 @@
     }
     if ((m = q.match(/rsi(?:\s*\(14\))?\s*(?:<=|at most|max(?:imum)?\s*|no more than\s*|)(\d+(?:\.\d+)?)\s*(?:or lower|or less)?\b/)) &&
         (q.includes('<=') || /at most|max(?:imum)?|no more than|or lower|or less/.test(q))) {
-      addIfMissing(rules, 'rsi', '<', Number(m[1]) + Number.EPSILON, `RSI ≤ ${m[1]}`);
+      addIfMissing(rules, 'rsi', '<', Number(m[1]) + INCLUSIVE_EPS, `RSI ≤ ${m[1]}`);
     }
     if ((m = q.match(/rsi(?:\s*\(14\))?\s*(?:>=|at least|min(?:imum)?\s*|no less than\s*|)(\d+(?:\.\d+)?)\s*(?:or higher|or more)?\b/)) &&
         (q.includes('>=') || /at least|min(?:imum)?|no less than|or higher|or more/.test(q))) {
-      addIfMissing(rules, 'rsi', '>', Number(m[1]) - Number.EPSILON, `RSI ≥ ${m[1]}`);
+      addIfMissing(rules, 'rsi', '>', Number(m[1]) - INCLUSIVE_EPS, `RSI ≥ ${m[1]}`);
     }
 
-    // Moving-average shorthand used by traders.
     const maRules = [
       { re: /(?:price|close)?\s*(?:is\s*|holding\s*)?(?:above|over|>)\s*(?:the\s*)?(20|50|200)\s*(?:-?\s*day\s*)?(?:sma|dma|ma|moving average)/, op: '>' },
       { re: /(?:price|close)?\s*(?:is\s*|holding\s*)?(?:below|under|<)\s*(?:the\s*)?(20|50|200)\s*(?:-?\s*day\s*)?(?:sma|dma|ma|moving average)/, op: '<' }
@@ -51,7 +50,6 @@
       }
     }
 
-    // MACD crossover variants.
     if (/macd\s*(?:has\s*)?(?:bullish\s*)?(?:cross(?:ed|ing|over)?|crossover)\s*(?:above\s*)?(?:the\s*)?signal/.test(q) ||
         /bullish\s+macd\s+(?:cross|crossover)/.test(q)) {
       addIfMissing(rules, 'macd_cross', '=', 1, 'MACD bullish signal cross');
@@ -61,7 +59,6 @@
       addIfMissing(rules, 'macd_cross', '=', -1, 'MACD bearish signal cross');
     }
 
-    // Relative-volume wording, including lower-volume filters.
     if ((m = q.match(/(?:relative\s*)?volume\s*(?:is\s*)?(?:below|under|less than|<=|<)\s*(\d+(?:\.\d+)?)\s*(?:x|times)\s*(?:average|normal)?/))) {
       addIfMissing(rules, 'relvol', '<', Number(m[1]), `Rel Vol < ${m[1]}x`);
     } else if ((m = q.match(/(?:relative\s*)?volume\s*(?:is\s*)?(?:above|over|at least|>=|>)?\s*(\d+(?:\.\d+)?)\s*(?:x|times)\s*(?:average|normal)?/))) {
@@ -75,8 +72,6 @@
       addIfMissing(rules, 'relvol', '>', x, `Rel Vol > ${x}x`);
     }
 
-    // Detect explicit 5-day/weekly move phrases first so they are not also
-    // accidentally treated as one-day moves.
     let hasExplicitMultiDayMove = false;
     if ((m = q.match(/(?:up|gained|rose|higher)\s*(?:by\s*|more than\s*|over\s*)?(\d+(?:\.\d+)?)\s*%\s*(?:over|in|during)\s*(?:the\s*)?(?:last\s*)?(?:5\s*days|five\s*days|week)/))) {
       addIfMissing(rules, 'chg5', '>', Number(m[1]), `5D move > ${m[1]}%`);
@@ -87,8 +82,6 @@
       hasExplicitMultiDayMove = true;
     }
 
-    // 1-day moves only when the wording is genuinely daily/today or when no
-    // explicit multi-day period is present.
     if (!hasExplicitMultiDayMove || /today|in one day|in 1 day/.test(q)) {
       if ((m = q.match(/(?:down|fell|fallen|dropped|lower)\s*(?:by\s*|more than\s*|over\s*)?(\d+(?:\.\d+)?)\s*%\s*(?:today|in one day|in 1 day)?/))) {
         addIfMissing(rules, 'chg1', '<', -Number(m[1]), `1D move < -${m[1]}%`);
@@ -98,7 +91,6 @@
       }
     }
 
-    // 52-week high/low proximity language.
     if ((m = q.match(/(?:within|less than|no more than)\s*(\d+(?:\.\d+)?)\s*%\s*(?:of|from)\s*(?:the\s*)?52-week\s*low/))) {
       addIfMissing(rules, 'from_low52', '<', Number(m[1]), `Within ${m[1]}% of 52-week low`);
     }
@@ -120,10 +112,10 @@
 
   parseRules = enhancedParseRules;
 
-  // Lightweight QA hook for browser-console regression checks.
   window.SEL_EASY_MODE_QA = function () {
     const cases = [
       ['RSI is oversold and price above 200 SMA', ['rsi','sma200']],
+      ['RSI 40 or lower', ['rsi']],
       ['down 5% over the last week', ['chg5']],
       ['down 5% today', ['chg1']],
       ['volume below 0.8x average', ['relvol']],
