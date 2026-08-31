@@ -2,6 +2,15 @@ name: Refresh Scanner Data
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "Refresh mode"
+        required: true
+        default: "full"
+        type: choice
+        options:
+          - full
+          - latest
   push:
     branches: ["main"]
     paths:
@@ -10,6 +19,7 @@ on:
       - ".github/workflows/refresh-data.yml"
   schedule:
     - cron: "20 22 * * 1-5"
+    - cron: "20 23 * * 0"
 
 permissions:
   contents: write
@@ -17,6 +27,7 @@ permissions:
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    timeout-minutes: 330
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,17 +43,32 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Choose refresh mode
+        id: mode
+        shell: bash
+        run: |
+          MODE="full"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            MODE="${{ inputs.mode }}"
+          elif [[ "${{ github.event_name }}" == "schedule" && "${{ github.event.schedule }}" == "20 22 * * 1-5" ]]; then
+            MODE="latest"
+          fi
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          echo "Refresh mode: $MODE"
+
       - name: Build Yahoo EOD scanner dataset
-        run: python scripts/build_scan_data.py
+        run: python scripts/build_scan_data.py --mode "${{ steps.mode.outputs.mode }}"
 
       - name: Commit refreshed dataset
+        shell: bash
         run: |
           git config user.name "scanner-evidence-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add data/scan_data.json
+          git add data/market
           if git diff --cached --quiet; then
             echo "No dataset changes to commit."
           else
-            git commit -m "Refresh Yahoo scanner data"
+            git commit -m "Refresh full-market Yahoo scanner data (${{ steps.mode.outputs.mode }})"
+            git pull --rebase origin main
             git push
           fi
