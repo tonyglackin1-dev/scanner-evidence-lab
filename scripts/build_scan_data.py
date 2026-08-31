@@ -8,8 +8,6 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
-# Broad liquid US large-cap + ETF starter universe. This is intentionally explicit
-# so the daily job is deterministic and easy to extend.
 TICKERS = [
     "AAPL","MSFT","NVDA","AMZN","GOOGL","META","AVGO","TSLA","BRK-B","LLY",
     "JPM","V","MA","WMT","XOM","COST","NFLX","ORCL","HD","PG","JNJ","ABBV",
@@ -59,40 +57,70 @@ def enrich(df: pd.DataFrame) -> pd.DataFrame:
     out["EMA12"] = out["Close"].ewm(span=12, adjust=False).mean()
     out["EMA26"] = out["Close"].ewm(span=26, adjust=False).mean()
     out["MACD"] = out["EMA12"] - out["EMA26"]
+    out["MACD_PREV"] = out["MACD"].shift(1)
+    out["SMA50"] = out["Close"].rolling(50).mean()
     out["SMA200"] = out["Close"].rolling(200).mean()
     out["VOL20"] = out["Volume"].shift(1).rolling(20).mean()
     out["RELVOL"] = out["Volume"] / out["VOL20"].replace(0, np.nan)
-    out["MACD_RISING"] = out["MACD"] > out["MACD"].shift(1)
-    out["MATCH"] = (
-        (out["RSI"] < 45)
-        & out["MACD_RISING"]
-        & (out["Close"] > out["SMA200"])
-        & (out["RELVOL"] > 1.5)
-    )
+    out["MACD_RISING"] = out["MACD"] > out["MACD_PREV"]
     for n in (1, 5, 10, 20):
         out[f"FWD{n}"] = out["Close"].shift(-n) / out["Close"] - 1
     return out
 
 
-def evidence_stats(df: pd.DataFrame) -> dict:
-    hist = df.loc[df["MATCH"]].copy()
-    # Exclude the last 20 rows so every evidence event has a complete +20D outcome.
-    if len(df) > 20:
-        cutoff = df.index[-21]
-        hist = hist.loc[hist.index <= cutoff]
-    vals = {}
-    for n in (1, 5, 10, 20):
-        s = hist[f"FWD{n}"].dropna() * 100
-        vals[str(n)] = {
-            "median": round(float(s.median()), 2) if len(s) else None,
-            "win_rate": round(float((s > 0).mean() * 100), 1) if len(s) else None,
-            "sample": int(len(s)),
-        }
-    return vals
+def finite_or_none(x, digits=4):
+    try:
+        value = float(x)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(value):
+        return None
+    return round(value, digits)
 
 
-def fmt_price(x: float) -> str:
-    return f"${x:,.2f}"
+def latest_record(ticker: str, df: pd.DataFrame) -> dict:
+    x = df.iloc[-1]
+    return {
+        "ticker": ticker,
+        "asof": df.index[-1].strftime("%Y-%m-%d"),
+        "close": finite_or_none(x["Close"], 4),
+        "rsi": finite_or_none(x["RSI"], 2),
+        "macd": finite_or_none(x["MACD"], 5),
+        "macd_prev": finite_or_none(x["MACD_PREV"], 5),
+        "sma50": finite_or_none(x["SMA50"], 4),
+        "sma200": finite_or_none(x["SMA200"], 4),
+        "relvol": finite_or_none(x["RELVOL"], 3),
+    }
+
+
+def compact_history(df: pd.DataFrame) -> list[list]:
+    # Keep roughly the last three years of fully enriched observations. Rows are
+    # compact arrays to keep the static JSON small enough for GitHub Pages.
+    cols = ["RSI", "MACD", "MACD_PREV", "Close", "SMA50", "SMA200", "RELVOL", "FWD1", "FWD5", "FWD10", "FWD20"]
+    hist = df[cols].dropna(subset=["RSI", "MACD", "MACD_PREV", "Close", "SMA50", "SMA200", "RELVOL"]).tail(760)
+    rows = []
+    for _, x in hist.iterrows():
+        rows.append([
+            finite_or_none(x["RSI"], 2),
+            finite_or_none(x["MACD"], 5),
+            finite_or_none(x["MACD_PREV"], 5),
+            finite_or_none(x["Close"], 4),
+            finite_or_none(x["SMA50"], 4),
+            finite_or_none(x["SMA200"], 4),
+            finite_or_none(x["RELVOL"], 3),
+            finite_or_none(x["FWD1"] * 100, 3),
+            finite_or_none(x["FWD5"] * 100, 3),
+            finite_or_none(x["FWD10"] * 100, 3),
+            finite_or_none(x["FWD20"] * 100, 3),
+        ])
+    return rows
+
+
+def default_match(x: dict) -> bool:
+    required = [x.get("rsi"), x.get("macd"), x.get("macd_prev"), x.get("close"), x.get("sma200"), x.get("relvol")]
+    if any(v is None for v in required):
+        return False
+    return x["rsi"] < 45 and x["macd"] > x["macd_prev"] and x["close"] > x["sma200"] and x["relvol"] > 1.5
 
 
 def main() -> None:
@@ -107,7 +135,8 @@ def main() -> None:
         progress=False,
     )
 
-    matches = []
+    latest = []
+    history = {}
     processed = 0
     failed = []
 
@@ -119,73 +148,39 @@ def main() -> None:
                 continue
             df = enrich(df)
             processed += 1
-            latest = df.iloc[-1]
-            if not bool(latest["MATCH"]):
-                continue
-
-            ev = evidence_stats(df)
-            evidence = [ev[str(n)]["median"] for n in (1, 5, 10, 20)]
-            rules = [
-                f"RSI {latest['RSI']:.1f} < 45",
-                "MACD rising vs prior session",
-                f"Close {fmt_price(latest['Close'])} > 200 DMA {fmt_price(latest['SMA200'])}",
-                f"Relative volume {latest['RELVOL']:.2f}x > 1.5x",
-            ]
-            matches.append({
-                "ticker": ticker,
-                "price": fmt_price(float(latest["Close"])),
-                "price_value": round(float(latest["Close"]), 4),
-                "rsi": round(float(latest["RSI"]), 1),
-                "rv": f"{float(latest['RELVOL']):.2f}x",
-                "rv_value": round(float(latest["RELVOL"]), 3),
-                "trend": "Above 200 DMA",
-                "d5": None if ev["5"]["median"] is None else f"{ev['5']['median']:+.2f}%",
-                "evidence": evidence,
-                "evidence_detail": ev,
-                "rules": rules,
-                "asof": df.index[-1].strftime("%Y-%m-%d"),
-            })
+            latest.append(latest_record(ticker, df))
+            history[ticker] = compact_history(df)
         except Exception as exc:
             failed.append(f"{ticker}: {exc}")
 
-    matches.sort(key=lambda x: x["rv_value"], reverse=True)
-
-    all_5d = []
-    all_10d_wins = []
-    total_samples = 0
-    for row in matches:
-        d5 = row["evidence_detail"]["5"]
-        d10 = row["evidence_detail"]["10"]
-        if d5["median"] is not None:
-            all_5d.append(d5["median"])
-        if d10["win_rate"] is not None:
-            all_10d_wins.append(d10["win_rate"])
-        total_samples += d5["sample"]
+    latest.sort(key=lambda x: x["ticker"])
+    default_matches = [x["ticker"] for x in latest if default_match(x)]
 
     payload = {
         "source": "Yahoo Finance via yfinance",
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "rule_set": {
-            "rsi": "RSI(14) < 45",
-            "macd": "MACD rising vs prior session",
-            "trend": "Close > SMA(200)",
-            "relative_volume": "Volume / prior 20-day average volume > 1.5",
-        },
         "universe_size": len(TICKERS),
         "processed_symbols": processed,
         "failed_symbols": failed,
-        "matches": matches,
-        "metrics": {
-            "matches": len(matches),
-            "median_5d": round(float(np.median(all_5d)), 2) if all_5d else None,
-            "win_rate_10d": round(float(np.mean(all_10d_wins)), 1) if all_10d_wins else None,
-            "sample_size": int(total_samples),
+        "schema": {
+            "history_columns": ["rsi", "macd", "macd_prev", "close", "sma50", "sma200", "relvol", "fwd1_pct", "fwd5_pct", "fwd10_pct", "fwd20_pct"]
         },
+        "capabilities": [
+            "RSI above/below a threshold",
+            "MACD rising/falling or above/below zero",
+            "Price above/below 50-day moving average",
+            "Price above/below 200-day moving average",
+            "Relative volume above/below a threshold",
+        ],
+        "default_query": "RSI below 45, MACD rising, price above the 200-day moving average and relative volume above 1.5x",
+        "default_matches": default_matches,
+        "latest": latest,
+        "history": history,
     }
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    print(f"Wrote {OUT} with {len(matches)} current matches from {processed} processed symbols.")
+    OUT.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+    print(f"Wrote {OUT}: {processed} symbols, {sum(len(v) for v in history.values())} historical observations.")
 
 
 if __name__ == "__main__":
