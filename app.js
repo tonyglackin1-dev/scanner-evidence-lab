@@ -1,59 +1,95 @@
-const demoRows=[
- {ticker:'NVDA',price:'$128.44',rsi:42,rv:'1.8x',trend:'Above 200 DMA',d5:'+3.4%',evidence:[0.9,3.4,5.8,8.1],rules:['RSI below 45','MACD slope positive','Price above 200-day MA','Relative volume above 1.5x']},
- {ticker:'AMD',price:'$164.11',rsi:44,rv:'1.7x',trend:'Above 200 DMA',d5:'+2.6%',evidence:[0.5,2.6,4.1,6.7],rules:['RSI below 45','MACD rising for 3 sessions','Price above 200-day MA','Relative volume above 1.5x']},
- {ticker:'AVGO',price:'$315.80',rsi:41,rv:'1.9x',trend:'Above 200 DMA',d5:'+3.1%',evidence:[0.8,3.1,4.9,7.2],rules:['RSI below 45','MACD histogram improving','Price above 200-day MA','Relative volume above 1.5x']},
- {ticker:'PLTR',price:'$187.22',rsi:39,rv:'2.2x',trend:'Above 200 DMA',d5:'+4.0%',evidence:[1.1,4.0,6.3,9.4],rules:['RSI below 45','MACD rising','Price above 200-day MA','Relative volume above 2.0x']},
- {ticker:'META',price:'$778.35',rsi:43,rv:'1.6x',trend:'Above 200 DMA',d5:'+2.3%',evidence:[0.4,2.3,3.7,5.5],rules:['RSI below 45','MACD rising','Price above 200-day MA','Relative volume above 1.5x']},
- {ticker:'QQQ',price:'$601.17',rsi:44,rv:'1.6x',trend:'Above 200 DMA',d5:'+1.9%',evidence:[0.3,1.9,3.0,4.8],rules:['RSI below 45','MACD rising','Price above 200-day MA','Relative volume above 1.5x']}
-];
-
 const body=document.querySelector('#resultsBody');
 const evidenceTitle=document.querySelector('#evidenceTitle');
 const evidenceList=document.querySelector('#evidenceList');
 const distribution=document.querySelector('#distribution');
 const evIds=['ev1','ev5','ev10','ev20'];
+let scannerData=null;
+
+function fmtEvidence(v){
+  if(v===null || v===undefined || Number.isNaN(Number(v))) return 'n/a';
+  const n=Number(v);
+  return `${n>=0?'+':''}${n.toFixed(2)}%`;
+}
 
 function renderRows(rows){
- body.innerHTML=rows.map((r,i)=>`<tr data-index="${i}"><td class="ticker">${r.ticker}</td><td>${r.price}</td><td>${r.rsi}</td><td>${r.rv}</td><td>${r.trend}</td><td class="positive">${r.d5}</td><td><button class="evidence-button" data-index="${i}">View</button></td></tr>`).join('');
- document.querySelectorAll('tbody tr,.evidence-button').forEach(el=>el.addEventListener('click',e=>{
-   e.stopPropagation();
-   showEvidence(rows[Number(el.dataset.index)]);
- }));
+  if(!rows.length){
+    body.innerHTML='<tr><td colspan="7" class="muted">No symbols currently match all four rules.</td></tr>';
+    evidenceTitle.textContent='No current match selected';
+    evidenceList.innerHTML='<li><span>The live scan completed successfully.</span><b>0 matches</b></li>';
+    distribution.innerHTML='';
+    evIds.forEach(id=>document.querySelector(`#${id}`).textContent='n/a');
+    return;
+  }
+  body.innerHTML=rows.map((r,i)=>`<tr data-index="${i}"><td class="ticker">${r.ticker}</td><td>${r.price}</td><td>${r.rsi}</td><td>${r.rv}</td><td>${r.trend}</td><td class="${String(r.d5||'').startsWith('-')?'negative':'positive'}">${r.d5??'n/a'}</td><td><button class="evidence-button" data-index="${i}">View</button></td></tr>`).join('');
+  document.querySelectorAll('tbody tr,.evidence-button').forEach(el=>el.addEventListener('click',e=>{
+    e.stopPropagation();
+    const row=rows[Number(el.dataset.index)];
+    if(row) showEvidence(row);
+  }));
 }
 
 function showEvidence(row){
- evidenceTitle.textContent=`Evidence for ${row.ticker}`;
- row.evidence.forEach((v,i)=>document.querySelector(`#${evIds[i]}`).textContent=`+${v.toFixed(1)}%`);
- evidenceList.innerHTML=row.rules.map(rule=>`<li><span>${rule}</span><b>Pass</b></li>`).join('');
- distribution.innerHTML='';
- const bars=[22,31,27,40,51,45,63,58,72,68,82,76,91,84,78,88,70,61,56,49,44,38,32,27];
- bars.forEach(h=>{const b=document.createElement('span');b.style.height=`${h}%`;distribution.appendChild(b)});
+  evidenceTitle.textContent=`Evidence for ${row.ticker}`;
+  row.evidence.forEach((v,i)=>document.querySelector(`#${evIds[i]}`).textContent=fmtEvidence(v));
+  evidenceList.innerHTML=row.rules.map(rule=>`<li><span>${rule}</span><b>Pass</b></li>`).join('');
+  distribution.innerHTML='';
+  const medians=row.evidence.map(v=>v===null?0:Number(v));
+  const max=Math.max(1,...medians.map(v=>Math.abs(v)));
+  const bars=[];
+  for(let i=0;i<24;i++){
+    const wave=Math.sin(i/3.2)*0.18+0.78;
+    const anchor=Math.abs(medians[i%medians.length]||0)/max;
+    bars.push(Math.max(18,Math.min(96,(wave*62)+(anchor*28))));
+  }
+  bars.forEach(h=>{const b=document.createElement('span');b.style.height=`${h}%`;distribution.appendChild(b)});
 }
 
-renderRows(demoRows);
-showEvidence(demoRows[0]);
+function setMetrics(data){
+  const m=data.metrics||{};
+  document.querySelector('#matchesMetric').textContent=m.matches??0;
+  document.querySelector('#median5Metric').textContent=m.median_5d===null||m.median_5d===undefined?'n/a':fmtEvidence(m.median_5d);
+  document.querySelector('#winMetric').textContent=m.win_rate_10d===null||m.win_rate_10d===undefined?'n/a':`${Number(m.win_rate_10d).toFixed(1)}%`;
+  document.querySelector('#sampleMetric').textContent=(m.sample_size??0).toLocaleString();
+  const when=data.generated_at?new Date(data.generated_at):null;
+  const whenText=when&&!Number.isNaN(when.getTime())?when.toLocaleString():'unknown time';
+  document.querySelector('#resultTimestamp').textContent=`Yahoo EOD • refreshed ${whenText}`;
+}
+
+async function loadScannerData(){
+  document.querySelector('#resultTimestamp').textContent='Loading Yahoo EOD data…';
+  try{
+    const response=await fetch(`data/scan_data.json?v=${Date.now()}`,{cache:'no-store'});
+    if(!response.ok) throw new Error(`HTTP ${response.status}`);
+    scannerData=await response.json();
+    renderRows(scannerData.matches||[]);
+    setMetrics(scannerData);
+    if(scannerData.matches?.length) showEvidence(scannerData.matches[0]);
+  }catch(err){
+    scannerData=null;
+    body.innerHTML='<tr><td colspan="7" class="negative">Live dataset is not available yet. The GitHub data refresh may still be running.</td></tr>';
+    document.querySelector('#resultTimestamp').textContent=`Data load error: ${err.message}`;
+    document.querySelector('#matchesMetric').textContent='—';
+    document.querySelector('#median5Metric').textContent='—';
+    document.querySelector('#winMetric').textContent='—';
+    document.querySelector('#sampleMetric').textContent='—';
+  }
+}
 
 const navItems=document.querySelectorAll('.nav-item');
 navItems.forEach(btn=>btn.addEventListener('click',()=>{
- navItems.forEach(x=>x.classList.remove('active'));
- btn.classList.add('active');
- document.querySelectorAll('.view').forEach(v=>v.classList.remove('active-view'));
- document.querySelector(`#${btn.dataset.view}`).classList.add('active-view');
+  navItems.forEach(x=>x.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active-view'));
+  document.querySelector(`#${btn.dataset.view}`).classList.add('active-view');
 }));
 
-document.querySelector('#scanButton').addEventListener('click',()=>{
- const button=document.querySelector('#scanButton');
- button.disabled=true;
- button.textContent='SCANNING…';
- document.querySelector('#matchesMetric').textContent='…';
- setTimeout(()=>{
-   renderRows(demoRows);
-   document.querySelector('#matchesMetric').textContent='18';
-   document.querySelector('#median5Metric').textContent='+2.8%';
-   document.querySelector('#winMetric').textContent='64%';
-   document.querySelector('#sampleMetric').textContent='426';
-   document.querySelector('#resultTimestamp').textContent=`Preview scan • ${new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`;
-   button.disabled=false;
-   button.textContent='SCAN MARKET';
- },700);
+document.querySelector('#scanButton').addEventListener('click',async()=>{
+  const button=document.querySelector('#scanButton');
+  button.disabled=true;
+  button.textContent='REFRESHING…';
+  await loadScannerData();
+  button.disabled=false;
+  button.textContent='SCAN MARKET';
 });
+
+loadScannerData();
