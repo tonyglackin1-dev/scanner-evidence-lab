@@ -9,7 +9,15 @@
 
   const card=metric.closest('.metric-card');
   const note=card?.querySelector('small');
-  const finalNote='Exact +5D historical events';
+
+  function timeframeSuffix(){
+    const tf=document.querySelector('#timeframe')?.value||'Daily';
+    return tf==='Weekly'?'W':tf==='Monthly'?'M':'D';
+  }
+
+  function finalNote(){
+    return `Exact +5${timeframeSuffix()} historical events`;
+  }
 
   function normalise(){
     const text=String(metric.textContent||'').trim();
@@ -24,10 +32,11 @@
       return;
     }
     if(text==='Loading…') return;
-    if(note) note.textContent=finalNote;
+    if(note) note.textContent=finalNote();
   }
 
   const observer=new MutationObserver(normalise);
   observer.observe(metric,{childList:true,characterData:true,subtree:true});
+  document.querySelector('#timeframe')?.addEventListener('change',normalise);
   normalise();
 })();
