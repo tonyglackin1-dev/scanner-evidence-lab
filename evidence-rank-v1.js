@@ -14,6 +14,7 @@
     .sel-score strong{font-size:12px}.sel-score-strong{border-color:rgba(83,240,189,.45);color:var(--accent2)}
     .sel-score-good{border-color:rgba(103,169,255,.45);color:#8bbcff}.sel-score-mixed{border-color:rgba(255,215,106,.45);color:#ffd76a}
     .sel-score-weak{border-color:rgba(255,125,136,.38);color:var(--danger)}.sel-score-none{color:var(--muted)}
+    .sel-score-unproven{border-color:rgba(255,215,106,.45);color:#ffd76a;background:rgba(255,215,106,.05)}
   `;
   document.head.appendChild(css);
 
@@ -28,6 +29,7 @@
       <option value="median5">Rank: +5 median</option>
       <option value="sample">Rank: Sample size</option>
       <option value="liquidity">Rank: Liquidity</option>
+      <option value="manual">Manual table sort</option>
     </select>
     <select id="minEvidenceSample"><option value="0" selected>Any sample</option><option value="10">n ≥ 10</option><option value="30">n ≥ 30</option><option value="100">n ≥ 100</option><option value="500">n ≥ 500</option></select>
     <select id="minEvidenceWin"><option value="0" selected>Any success rate</option><option value="50">Success ≥ 50%</option><option value="55">Success ≥ 55%</option><option value="60">Success ≥ 60%</option><option value="65">Success ≥ 65%</option></select>
@@ -57,12 +59,18 @@
     const agreementPts=agreement===null?0:10*agreement;
     return {score:Math.round(samplePts+winPts+medianPts+agreementPts),sample:s,w,m5,agreement};
   }
-  function quality(v){
+  function scoreQuality(v){
     if(v===null)return ['No score','sel-score-none'];
     if(v>=75)return ['Strong','sel-score-strong'];
     if(v>=60)return ['Good','sel-score-good'];
     if(v>=45)return ['Mixed','sel-score-mixed'];
     return ['Weak','sel-score-weak'];
+  }
+  function confidence(s){
+    if(s<10)return ['Unproven','Very low confidence'];
+    if(s<30)return ['Low confidence','Low confidence'];
+    if(s<100)return ['Moderate confidence','Moderate confidence'];
+    return ['High confidence','High confidence'];
   }
   function rowScore(r){return scoreParts(r).score}
   function sortValue(r){
@@ -72,6 +80,7 @@
     if(rankMode==='liquidity')return n(r.avg_dollar_vol20)??-1e9;
     return rowScore(r)??-1e9;
   }
+  function syncSortAuthority(){window.SEL_RESULTS_TOOLS?.setExternalRanking(rankMode!=='manual');}
   function apply(rows){
     let out=[...rows];
     const anyLoaded=out.some(r=>r?.evidence_detail);
@@ -80,13 +89,14 @@
         const s=sample(r),w=success(r,2);
         return s>=minSample&&(minWin===0||w===null||w>=minWin);
       });
-      out.sort((a,b)=>sortValue(b)-sortValue(a));
+      if(rankMode!=='manual') out.sort((a,b)=>sortValue(b)-sortValue(a));
     }
     const filtered=minSample>0||minWin>0;
     const note=document.querySelector('#evidenceRankNote');
     if(note){
       if(!anyLoaded) note.textContent='Evidence scores will appear as ticker history loads.';
       else if(filtered) note.textContent=`Evidence filters • ${out.length.toLocaleString()} of ${rows.length.toLocaleString()} matches shown`;
+      else if(rankMode==='manual') note.textContent='Manual table sort is active above.';
       else note.textContent=`Showing all ${out.length.toLocaleString()} matches • ranked by ${rankMode==='score'?'Evidence Score':rankMode}`;
     }
     return out;
@@ -99,15 +109,19 @@
       const r=byTicker.get(ticker);if(!r)return;
       const cell=tr.querySelector('td:last-child');if(!cell)return;
       cell.querySelector('.sel-score')?.remove();
-      const p=scoreParts(r),[label,cls]=quality(p.score);
+      const p=scoreParts(r);
+      let [label,cls]=scoreQuality(p.score);
+      const [confidenceLabel,confidenceText]=confidence(p.sample);
+      if(p.score!==null&&p.sample<10){label='Unproven';cls='sel-score-unproven';}
       const badge=document.createElement('span');badge.className=`sel-score ${cls}`;
-      badge.title=p.score===null?'No exact historical matches yet':`Evidence Score ${p.score}/100 • n=${p.sample} • +10 success ${p.w===null?'n/a':p.w.toFixed(1)+'%'} • +5 directional median ${p.m5===null?'n/a':p.m5.toFixed(2)+'%'}`;
-      badge.innerHTML=p.score===null?`<strong>—</strong> ${label}`:`<strong>${p.score}</strong> ${label}`;
+      badge.title=p.score===null?'No exact historical matches yet':`Evidence Score ${p.score}/100 • ${confidenceText} • n=${p.sample} • +10 success ${p.w===null?'n/a':p.w.toFixed(1)+'%'} • +5 directional median ${p.m5===null?'n/a':p.m5.toFixed(2)+'%'}`;
+      badge.innerHTML=p.score===null?`<strong>—</strong> ${label}`:`<strong>${p.score}</strong> ${label}${p.sample>=10?` · ${confidenceLabel}`:''}`;
       cell.prepend(badge);
     });
   }
 
   const base=renderRows;
+  syncSortAuthority();
   renderRows=function(rows){
     latest=[...rows];
     const shown=apply(rows);
@@ -119,9 +133,9 @@
     const shown=apply(latest);base(shown);queueMicrotask(()=>decorate(shown));
   }
 
-  document.querySelector('#evidenceRank')?.addEventListener('change',e=>{rankMode=e.target.value;refresh()});
+  document.querySelector('#evidenceRank')?.addEventListener('change',e=>{rankMode=e.target.value;syncSortAuthority();refresh()});
   document.querySelector('#minEvidenceSample')?.addEventListener('change',e=>{minSample=Number(e.target.value);refresh()});
   document.querySelector('#minEvidenceWin')?.addEventListener('change',e=>{minWin=Number(e.target.value);refresh()});
 
-  window.SEL_EVIDENCE_SCORE={scoreParts,quality};
+  window.SEL_EVIDENCE_SCORE={scoreParts,scoreQuality,confidence};
 })();
