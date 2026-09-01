@@ -62,8 +62,8 @@
       if((m=q.match(/(?:down|fell|dropped)\s*(\d+(?:\.\d+)?)\s*%\s*(?:this|over the last)\s*week\b/))) add('chg1','<',-Number(m[1]),`1-week move < -${m[1]}%`);
       if((m=q.match(/(?:up|gained|rose)\s*(\d+(?:\.\d+)?)\s*%\s*(?:over|in)\s*(?:the\s*)?(?:last\s*)?5\s*weeks/))) add('chg5','>',Number(m[1]),`5-week move > ${m[1]}%`);
       if((m=q.match(/(?:down|fell|dropped)\s*(\d+(?:\.\d+)?)\s*%\s*(?:over|in)\s*(?:the\s*)?(?:last\s*)?5\s*weeks/))) add('chg5','<',-Number(m[1]),`5-week move < -${m[1]}%`);
-      if((m=q.match(/(?:above|over)\s*(20|50|200)[- ]?(?:week|weekly)\s*(?:ma|moving average)/))) add(`sma${m[1]}`,'>',null,`Price > ${m[1]}-week MA`);
-      if((m=q.match(/(?:below|under)\s*(20|50|200)[- ]?(?:week|weekly)\s*(?:ma|moving average)/))) add(`sma${m[1]}`,'<',null,`Price < ${m[1]}-week MA`);
+      if((m=q.match(/(?:(?:price|close)\s+)?(?:above|over)\s+(?:the\s+)?(20|50|200)[- ]?(?:week|weekly)\s*(?:ma|moving average)/))) add(`sma${m[1]}`,'>',null,`Price > ${m[1]}-week MA`);
+      if((m=q.match(/(?:(?:price|close)\s+)?(?:below|under)\s+(?:the\s+)?(20|50|200)[- ]?(?:week|weekly)\s*(?:ma|moving average)/))) add(`sma${m[1]}`,'<',null,`Price < ${m[1]}-week MA`);
       rules.forEach(r=>{if(r.field==='chg1')r.label=r.label.replace(/1D|1-day/gi,'1-week');if(r.field==='chg5')r.label=r.label.replace(/5D|5-day/gi,'5-week');if(/^sma(20|50|200)$/.test(r.field))r.label=r.label.replace(/(20|50|200) DMA/gi,'$1-week MA');});
     }
     if(u==='Monthly'){
@@ -71,8 +71,8 @@
       if((m=q.match(/(?:down|fell|dropped)\s*(\d+(?:\.\d+)?)\s*%\s*(?:this|over the last)\s*month\b/))) add('chg1','<',-Number(m[1]),`1-month move < -${m[1]}%`);
       if((m=q.match(/(?:up|gained|rose)\s*(\d+(?:\.\d+)?)\s*%\s*(?:over|in)\s*(?:the\s*)?(?:last\s*)?5\s*months/))) add('chg5','>',Number(m[1]),`5-month move > ${m[1]}%`);
       if((m=q.match(/(?:down|fell|dropped)\s*(\d+(?:\.\d+)?)\s*%\s*(?:over|in)\s*(?:the\s*)?(?:last\s*)?5\s*months/))) add('chg5','<',-Number(m[1]),`5-month move < -${m[1]}%`);
-      if((m=q.match(/(?:above|over)\s*(20|50|200)[- ]?(?:month|monthly)\s*(?:ma|moving average)/))) add(`sma${m[1]}`,'>',null,`Price > ${m[1]}-month MA`);
-      if((m=q.match(/(?:below|under)\s*(20|50|200)[- ]?(?:month|monthly)\s*(?:ma|moving average)/))) add(`sma${m[1]}`,'<',null,`Price < ${m[1]}-month MA`);
+      if((m=q.match(/(?:(?:price|close)\s+)?(?:above|over)\s+(?:the\s+)?(20|50|200)[- ]?(?:month|monthly)\s*(?:ma|moving average)/))) add(`sma${m[1]}`,'>',null,`Price > ${m[1]}-month MA`);
+      if((m=q.match(/(?:(?:price|close)\s+)?(?:below|under)\s+(?:the\s+)?(20|50|200)[- ]?(?:month|monthly)\s*(?:ma|moving average)/))) add(`sma${m[1]}`,'<',null,`Price < ${m[1]}-month MA`);
       rules.forEach(r=>{if(r.field==='chg1')r.label=r.label.replace(/1D|1-day/gi,'1-month');if(r.field==='chg5')r.label=r.label.replace(/5D|5-day/gi,'5-month');if(/^sma(20|50|200)$/.test(r.field))r.label=r.label.replace(/(20|50|200) DMA/gi,'$1-month MA');});
     }
     return rules;
