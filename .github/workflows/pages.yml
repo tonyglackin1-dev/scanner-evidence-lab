@@ -9,6 +9,7 @@ on:
       - "Refresh Scanner Data"
       - "Refresh Weekly Monthly Data"
       - "Refresh EMA Evidence Data"
+      - "Refresh Opportunity Evidence Data"
     types: [completed]
 
 permissions:
