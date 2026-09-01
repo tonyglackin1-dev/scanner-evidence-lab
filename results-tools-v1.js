@@ -4,6 +4,7 @@
   let sortKey='liquidity';
   let sortDir=-1;
   let baseRows=[];
+  let externalRanking=false;
 
   const css=document.createElement('style');
   css.textContent=`
@@ -11,6 +12,7 @@
     .results-tools input,.results-tools select{border:1px solid var(--line);background:#0b121a;color:var(--text);border-radius:9px;padding:9px 10px}
     .results-tools input{min-width:210px}.results-tools .tool-button{border:1px solid var(--line);background:#101a24;color:var(--text);border-radius:9px;padding:9px 11px;cursor:pointer}
     .results-tools .tool-button:hover{border-color:var(--accent2)}
+    .results-tools select:disabled,.results-tools .tool-button:disabled{opacity:.45;cursor:not-allowed}
     @media(max-width:640px){.results-tools input,.results-tools select,.results-tools .tool-button{width:100%}}
   `;
   document.head.appendChild(css);
@@ -44,7 +46,8 @@
   function viewRows(){
     let rows=[...baseRows];
     if(query){const q=query.toLowerCase();rows=rows.filter(r=>String(r.ticker||'').toLowerCase().includes(q)||String(r.name||'').toLowerCase().includes(q));}
-    rows.sort(comparator);return rows;
+    if(!externalRanking) rows.sort(comparator);
+    return rows;
   }
   function refresh(){
     if(!baseRows.length)return;
@@ -62,6 +65,14 @@
     coreRender(shown);
   };
 
+  function setExternalRanking(active){
+    externalRanking=!!active;
+    const sel=document.querySelector('#resultSort');
+    const dir=document.querySelector('#resultSortDir');
+    if(sel){sel.disabled=externalRanking;sel.title=externalRanking?'Evidence ranking controls the current order. Choose Manual table sort below to enable this control.':'';}
+    if(dir){dir.disabled=externalRanking;dir.title=externalRanking?'Evidence ranking controls the current order.':'';}
+  }
+
   document.querySelector('#resultSearch')?.addEventListener('input',e=>{query=e.target.value.trim();refresh();});
   document.querySelector('#resultSort')?.addEventListener('change',e=>{sortKey=e.target.value;refresh();});
   document.querySelector('#resultSortDir')?.addEventListener('click',e=>{sortDir*=-1;e.target.textContent=sortDir<0?'↓':'↑';refresh();});
@@ -78,4 +89,6 @@
     const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8'});
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`scanner-evidence-${u.toLowerCase()}-${new Date().toISOString().slice(0,10)}.csv`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},0);
   });
+
+  window.SEL_RESULTS_TOOLS={setExternalRanking};
 })();
