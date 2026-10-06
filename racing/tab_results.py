@@ -155,8 +155,18 @@ def main() -> int:
     try:
         req = Request(public_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36", "Accept": "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8", "Accept-Encoding": "identity", "Accept-Language": "en-AU,en;q=0.9"})
         with urlopen(req, timeout=8) as response:
-            raw = response.read(2000)
-            print("PUBLIC_TAB_PROBE", response.status, response.headers.get("Content-Type", ""), raw[:500].decode("utf-8", errors="replace"))
+            raw = response.read()
+            html = raw.decode("utf-8", errors="replace")
+            print("PUBLIC_TAB_PROBE", response.status, response.headers.get("Content-Type", ""), html[:500])
+            # Inspect the TAB HTML for the data/API resources used by the working page.
+            import re
+            urls = sorted(set(re.findall(r"https?://[^\\\"\\'<> ]+", html)))
+            interesting = [u for u in urls if any(x in u.casefold() for x in ("api", "racing", "race", "tab-info", "graphql"))]
+            print("PUBLIC_TAB_RESOURCE_URLS", json.dumps(interesting[:100], indent=2))
+            for needle in ("__NEXT_DATA__", "venueMnemonic", "meeting", "raceNumber", "results", "dividends", "tab-info-service"):
+                pos = html.find(needle)
+                if pos >= 0:
+                    print("PUBLIC_TAB_HTML_MATCH", needle, html[max(0,pos-300):pos+700])
     except Exception as exc:
         print("PUBLIC_TAB_PROBE_ERROR", repr(exc))
 
