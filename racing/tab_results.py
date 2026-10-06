@@ -150,40 +150,45 @@ def main() -> int:
     token = os.getenv("TAB_API_TOKEN")
     rows, failures = [], []
 
-    # Diagnostic: probe the exact public TAB route proven to work from Australia.
-    public_url = "https://www.tab.com.au/racing/2026-10-05/DOOMBEN/B/R/5"
-    try:
-        req = Request(public_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36", "Accept": "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8", "Accept-Encoding": "identity", "Accept-Language": "en-AU,en;q=0.9"})
-        with urlopen(req, timeout=8) as response:
-            raw = response.read()
-            html = raw.decode("utf-8", errors="replace")
-            print("PUBLIC_TAB_PROBE", response.status, response.headers.get("Content-Type", ""), html[:500])
-            # Inspect the TAB HTML for the data/API resources used by the working page.
-            import re
-            urls = sorted(set(re.findall(r"https?://[^\\\"\\'<> ]+", html)))
-            interesting = [u for u in urls if any(x in u.casefold() for x in ("api", "racing", "race", "tab-info", "graphql"))]
-            print("PUBLIC_TAB_RESOURCE_URLS", json.dumps(interesting[:100], indent=2))
-            for needle in ("__NEXT_DATA__", "venueMnemonic", "meeting", "raceNumber", "results", "dividends", "tab-info-service"):
-                pos = html.find(needle)
-                if pos >= 0:
-                    print("PUBLIC_TAB_HTML_MATCH", needle, html[max(0,pos-300):pos+700])
-    except Exception as exc:
-        print("PUBLIC_TAB_PROBE_ERROR", repr(exc))
+    # Browser diagnostic: render the exact public TAB race page with local Edge.
+    # This avoids the obsolete historical API calls and lets TAB's JavaScript load.
+    import subprocess
+    import tempfile
+    import time
 
-    for t in targets:
-        code = venue_map.get(t.venue.upper())
-        if not code:
-            failures.append({**asdict(t), "error": "TAB venue mnemonic not discovered/mapped", "discovery": discovered.get(key)})
-            continue
-        url = f"{BASE}/{t.jurisdiction}/racing/{t.date}/{quote(code)}/R/races/{t.race}"
+    public_url = "https://www.tab.com.au/racing/2026-10-05/DOOMBEN/B/R/5"
+    edge_candidates = [
+        os.path.expandvars(r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"),
+        os.path.expandvars(r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"),
+    ]
+    edge = next((p for p in edge_candidates if os.path.exists(p)), None)
+    if not edge:
+        failures.append({"error": "Microsoft Edge not found on Australian runner"})
+    else:
         try:
-            payload = collect_race(t.jurisdiction, t.date, code, t.race, token)
-            runner = find_runner(payload, t.horse)
-            if not runner:
-                raise RuntimeError("runner not found in TAB response")
-            rows.append(row_from_runner(t, runner, url))
-        except (HTTPError, URLError, RuntimeError, ValueError) as exc:
-            failures.append({**asdict(t), "error": str(exc), "source_url": url})
+            with tempfile.TemporaryDirectory(prefix="tab-edge-") as profile:
+                cmd = [
+                    edge, "--headless=new", "--disable-gpu", "--no-first-run",
+                    "--disable-default-apps", "--disable-extensions",
+                    "--virtual-time-budget=15000",
+                    f"--user-data-dir={profile}",
+                    "--dump-dom", public_url,
+                ]
+                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=40, encoding="utf-8", errors="replace")
+                rendered = proc.stdout
+                print("EDGE_EXIT", proc.returncode, "DOM_CHARS", len(rendered))
+                print("EDGE_STDERR", proc.stderr[-1000:])
+                outdir = args.out.parent
+                outdir.mkdir(parents=True, exist_ok=True)
+                (outdir / "doomben_r5_rendered.html").write_text(rendered, encoding="utf-8")
+                needles = ["Astern Effort", "results", "dividend", "runner", "DOOMBEN", "Race 5"]
+                for needle in needles:
+                    pos = rendered.casefold().find(needle.casefold())
+                    print("EDGE_DOM_MATCH", needle, pos, rendered[max(0,pos-400):pos+1200] if pos >= 0 else "")
+                if not rendered:
+                    failures.append({"error": "Edge returned empty rendered DOM", "stderr": proc.stderr[-2000:]})
+        except Exception as exc:
+            failures.append({"error": "Edge TAB render failed", "detail": repr(exc)})
 
     columns = [
         "date","advised_rank","horse","number","meeting","race","finish_position",
