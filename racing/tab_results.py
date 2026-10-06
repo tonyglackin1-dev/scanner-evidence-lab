@@ -18,7 +18,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-BASE = "https://api.beta.tab.com.au/v1/historical-results-service"
+BASE = "https://api.beta.tab.com.au/v1/historical-results-service"\nINFO_BASE = "https://api.beta.tab.com.au/v1/tab-info-service"
 
 @dataclass(frozen=True)
 class Target:
@@ -84,6 +84,17 @@ def walk(obj: Any):
 
 def norm(value: Any) -> str:
     return " ".join(str(value or "").casefold().split())
+
+def fetch_tab_info_race(date, jurisdiction, venue_code, race_no):
+    url = f"{INFO_BASE}/racing/dates/{date}/meetings/R/{venue_code}/races/{race_no}?jurisdiction={jurisdiction}"
+    req = urllib.request.Request(url, headers=headers())
+    with urllib.request.urlopen(req, timeout=20) as response:
+        raw = response.read()
+        ctype = response.headers.get("Content-Type", "")
+        if "json" not in ctype.lower():
+            raise RuntimeError(f"TAB tab-info non-JSON HTTP {response.status} content-type={ctype} prefix={raw[:160]!r}")
+        return json.loads(raw.decode("utf-8")), url
+
 
 def find_runner(payload: Any, horse: str) -> dict[str, Any] | None:
     wanted = norm(horse)
