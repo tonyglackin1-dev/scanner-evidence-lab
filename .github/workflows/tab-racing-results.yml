@@ -12,6 +12,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install browser probe
+        run: |
+          npm install playwright-chromium
+          npx playwright install chromium
+      - name: Probe TAB in Chromium
+        continue-on-error: true
+        run: node racing/tab_browser_probe.js
       - name: Collect TAB results
         continue-on-error: true
         run: python racing/tab_results.py --validate-2026-10-05 --venue-map racing/tab_venue_codes.json --out racing/output/tab_results.csv
