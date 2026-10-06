@@ -18,7 +18,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-BASE = "https://api.beta.tab.com.au/v1/historical-results-service"\nINFO_BASE = "https://api.beta.tab.com.au/v1/tab-info-service"
+BASE = "https://api.beta.tab.com.au/v1/historical-results-service"
+INFO_BASE = "https://api.beta.tab.com.au/v1/tab-info-service"
 
 @dataclass(frozen=True)
 class Target:
