@@ -42,8 +42,12 @@ VALIDATION_TARGETS = [
 def get_json(url: str, token: str | None = None) -> Any:
     headers = {
         "Accept": "application/json",
+        "Content-Type": "application/json",
         "Accept-Encoding": "identity",
-        "User-Agent": "Mozilla/5.0 TABResultsCollector/1.0",
+        "Accept-Language": "en-AU,en;q=0.9",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
     }
     if token:
         headers["Authorization"] = f"Bearer {token}"
