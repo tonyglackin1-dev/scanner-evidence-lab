@@ -141,7 +141,7 @@ def main() -> int:
     if not targets:
         p.error("Use --validate-2026-10-05 (generic target-file support can be added next).")
 
-    venue_map = {}
+    # Venue mnemonics should come from TAB meeting discovery; static map is fallback only.\n    venue_map = {}
     if args.venue_map and args.venue_map.exists():
         venue_map = {k.upper(): str(v) for k, v in json.loads(args.venue_map.read_text()).items()}
 
@@ -151,7 +151,7 @@ def main() -> int:
     for t in targets:
         code = venue_map.get(t.venue.upper())
         if not code:
-            failures.append({**asdict(t), "error": "TAB venue code not mapped"})
+            failures.append({**asdict(t), "error": "TAB venue mnemonic not discovered/mapped", "discovery": discovered.get(key)})
             continue
         url = f"{BASE}/{t.jurisdiction}/racing/{t.date}/{quote(code)}/R/races/{t.race}"
         try:
