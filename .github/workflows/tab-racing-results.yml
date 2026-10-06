@@ -9,9 +9,6 @@ jobs:
     runs-on: [self-hosted, Windows, X64]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
       - name: Collect TAB results
         continue-on-error: true
         run: python racing/tab_results.py --validate-2026-10-05 --venue-map racing/tab_venue_codes.json --out racing/output/tab_results.csv
