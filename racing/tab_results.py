@@ -150,45 +150,57 @@ def main() -> int:
     token = os.getenv("TAB_API_TOKEN")
     rows, failures = [], []
 
-    # Browser diagnostic: render the exact public TAB race page with local Edge.
-    # This avoids the obsolete historical API calls and lets TAB's JavaScript load.
-    import subprocess
-    import tempfile
-    import time
+    # TAB info-service diagnostic. Discover the meeting first so TAB supplies its own venueMnemonic.
+    import urllib.request
+    import urllib.parse
 
-    public_url = "https://www.tab.com.au/racing/2026-10-05/DOOMBEN/B/R/5"
-    edge_candidates = [
-        os.path.expandvars(r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"),
-        os.path.expandvars(r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"),
-    ]
-    edge = next((p for p in edge_candidates if os.path.exists(p)), None)
-    if not edge:
-        failures.append({"error": "Microsoft Edge not found on Australian runner"})
-    else:
-        try:
-            with tempfile.TemporaryDirectory(prefix="tab-edge-") as profile:
-                cmd = [
-                    edge, "--headless=new", "--disable-gpu", "--no-first-run",
-                    "--disable-default-apps", "--disable-extensions",
-                    "--virtual-time-budget=15000",
-                    f"--user-data-dir={profile}",
-                    "--dump-dom", public_url,
-                ]
-                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=40, encoding="utf-8", errors="replace")
-                rendered = proc.stdout
-                print("EDGE_EXIT", proc.returncode, "DOM_CHARS", len(rendered))
-                print("EDGE_STDERR", proc.stderr[-1000:])
-                outdir = args.out.parent
-                outdir.mkdir(parents=True, exist_ok=True)
-                (outdir / "doomben_r5_rendered.html").write_text(rendered, encoding="utf-8")
-                needles = ["Astern Effort", "results", "dividend", "runner", "DOOMBEN", "Race 5"]
-                for needle in needles:
-                    pos = rendered.casefold().find(needle.casefold())
-                    print("EDGE_DOM_MATCH", needle, pos, rendered[max(0,pos-400):pos+1200] if pos >= 0 else "")
-                if not rendered:
-                    failures.append({"error": "Edge returned empty rendered DOM", "stderr": proc.stderr[-2000:]})
-        except Exception as exc:
-            failures.append({"error": "Edge TAB render failed", "detail": repr(exc)})
+    def tab_json(url):
+        req = urllib.request.Request(url, headers={
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Encoding": "identity",
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1",
+            "Origin": "https://www.tab.com.au",
+            "Referer": "https://www.tab.com.au/",
+        })
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            raw = resp.read().decode("utf-8", "replace")
+            print("TAB_INFO_HTTP", resp.status, resp.headers.get("content-type"), url, "CHARS", len(raw))
+            return json.loads(raw)
+
+    try:
+        meetings_url = "https://api.beta.tab.com.au/v1/tab-info-service/racing/dates/2026-10-05/meetings?jurisdiction=QLD"
+        data = tab_json(meetings_url)
+        meetings = data.get("meetings", data if isinstance(data, list) else [])
+        print("TAB_MEETINGS_COUNT", len(meetings))
+        doomben = None
+        for m in meetings:
+            name = str(m.get("meetingName") or m.get("venueName") or m.get("name") or "")
+            if "DOOMBEN" in name.upper():
+                doomben = m
+                break
+        print("TAB_DOOMBEN_MEETING", json.dumps(doomben, default=str)[:5000])
+        if not doomben:
+            failures.append({"error": "Doomben not found in TAB meeting discovery"})
+        else:
+            mnemonic = doomben.get("venueMnemonic") or doomben.get("venueCode") or doomben.get("venue")
+            race_type = doomben.get("raceType") or "R"
+            print("TAB_DISCOVERED", race_type, mnemonic)
+            race_url = (
+                "https://api.beta.tab.com.au/v1/tab-info-service/racing/dates/2026-10-05/meetings/"
+                + urllib.parse.quote(str(race_type), safe="")
+                + "/" + urllib.parse.quote(str(mnemonic), safe="")
+                + "/races/5?jurisdiction=QLD"
+            )
+            race = tab_json(race_url)
+            print("TAB_R5_KEYS", list(race.keys()) if isinstance(race, dict) else type(race).__name__)
+            print("TAB_R5_RESULTS", json.dumps(race.get("results"), default=str)[:3000] if isinstance(race, dict) else "")
+            print("TAB_R5_DIVIDENDS", json.dumps(race.get("dividends"), default=str)[:5000] if isinstance(race, dict) else "")
+            print("TAB_R5_RUNNERS", json.dumps(race.get("runners"), default=str)[:12000] if isinstance(race, dict) else "")
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            (args.out.parent / "doomben_r5.json").write_text(json.dumps(race, indent=2, default=str), encoding="utf-8")
+    except Exception as exc:
+        failures.append({"error": "TAB info-service discovery failed", "detail": repr(exc)})
+        print("TAB_INFO_ERROR", repr(exc))
 
     columns = [
         "date","advised_rank","horse","number","meeting","race","finish_position",
