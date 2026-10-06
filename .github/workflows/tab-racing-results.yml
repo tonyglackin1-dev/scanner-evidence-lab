@@ -1,0 +1,25 @@
+name: TAB racing results
+on:
+  push:
+    paths:
+      - "racing/**"
+  workflow_dispatch:
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Collect TAB results
+        continue-on-error: true
+        run: python racing/tab_results.py --validate-2026-10-05 --venue-map racing/tab_venue_codes.json --out racing/output/tab_results.csv
+      - name: Show output
+        run: |
+          cat racing/output/tab_results.csv || true
+          cat racing/output/tab_results.failures.json || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tab-racing-results
+          path: racing/output/
