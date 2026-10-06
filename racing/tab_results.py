@@ -53,7 +53,7 @@ def get_json(url: str, token: str | None = None) -> Any:
     if token:
         headers["Authorization"] = f"Bearer {token}"
     req = Request(url, headers=headers)
-    with urlopen(req, timeout=25) as response:
+    with urlopen(req, timeout=8) as response:
         return json.loads(response.read().decode("utf-8"))
 
 def discover_meetings(date: str, jurisdiction: str, token: str | None = None) -> Any:
@@ -142,12 +142,23 @@ def main() -> int:
     if not targets:
         p.error("Use --validate-2026-10-05 (generic target-file support can be added next).")
 
-    # Venue mnemonics should come from TAB meeting discovery; static map is fallback only.\n    venue_map = {}
+    # Venue mnemonics should come from TAB meeting discovery; static map is fallback only.
+    venue_map = {}
     if args.venue_map and args.venue_map.exists():
         venue_map = {k.upper(): str(v) for k, v in json.loads(args.venue_map.read_text()).items()}
 
     token = os.getenv("TAB_API_TOKEN")
     rows, failures = [], []
+
+    # Diagnostic: probe the exact public TAB route proven to work from Australia.
+    public_url = "https://www.tab.com.au/racing/2026-10-05/DOOMBEN/B/R/5"
+    try:
+        req = Request(public_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36", "Accept": "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8", "Accept-Encoding": "identity", "Accept-Language": "en-AU,en;q=0.9"})
+        with urlopen(req, timeout=8) as response:
+            raw = response.read(2000)
+            print("PUBLIC_TAB_PROBE", response.status, response.headers.get("Content-Type", ""), raw[:500].decode("utf-8", errors="replace"))
+    except Exception as exc:
+        print("PUBLIC_TAB_PROBE_ERROR", repr(exc))
 
     for t in targets:
         code = venue_map.get(t.venue.upper())
